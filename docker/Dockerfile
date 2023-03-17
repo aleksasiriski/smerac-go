@@ -8,7 +8,7 @@ ENV \
   PATH="/app/smerac-go:${PATH}"
 
 # Config
-COPY ["docker/smerac-go.yml.example", "/etc/smerac/smerac.yml"]
+COPY ["docker/smerac-go.yml.example", "/config/smerac.yml"]
 
 # Binary
 COPY ["dist/smerac-go_${TARGETOS}_${TARGETARCH}${TARGETVARIANT:+_7}/smerac-go", "/app/smerac-go/smerac-go"]
