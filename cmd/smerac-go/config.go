@@ -10,19 +10,25 @@ type Discord struct {
 	Token string `mapstructure:"TOKEN"`
 }
 
+type Google struct {
+	Token string `mapstructure:"TOKEN"`
+}
+
 type Role struct {
-	Id   int    `mapstructure:"ID"`
+	Id   string `mapstructure:"ID"`
 	Name string `mapstructure:"NAME"`
 }
 
 type Calendar struct {
-	ApiKey            string `mapstructure:"APIKEY"`
+	Id                string `mapstructure:"ID"`
+	ChannelId         string `mapstructure:"CHANNELID"`
 	Name              string `mapstructure:"NAME"`
 	TimeBetweenChecks int    `mapstructure:"TIME"`
 }
 
 type Config struct {
 	Discord   Discord    `mapstructure:"DISCORD"`
+	Google    Google     `mapstructure:"GOOGLE"`
 	Roles     []Role     `mapstructure:"ROLES"`
 	Calendars []Calendar `mapstructure:"CALENDARS"`
 }

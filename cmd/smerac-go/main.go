@@ -88,35 +88,41 @@ func main() {
 			Msg("Failed initialising discord API:")
 	}
 
-	// display initialised banner
-	log.Info().
-		Str("Discord", "success").
-		Msg("Initialised")
+	// discord connection
+	discord.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
+		log.Info().
+			Msg(fmt.Sprintf("Logged in as: %s#%s", s.State.User.Username, s.State.User.Discriminator))
+	})
+	err = discord.Open()
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Msg("Failed connecting to discord servers:")
+	}
 
 	// smerac-go
-	var helper conc.WaitGroup
 	var worker conc.WaitGroup
-	helper.Go(func() {
-		for {
-			worker.Go(func() {
-				err := fmt.Errorf("woohoo")
-				if err != nil {
-					log.Error().
-						Err(err).
-						Msg("Failed while doing:")
-				}
-			})
-			time.Sleep(time.Minute * 5)
-		}
+	worker.Go(func() {
+		worker.Go(func() {
+			err := setupSlashCommands(config.Roles, discord)
+			if err != nil {
+				log.Error().
+					Err(err).
+					Msg("Failed setting up slash commands:")
+			}
+		})
+		worker.Go(func() {
+			err := updateCalendars(config.Calendars, discord, config.Google)
+			if err != nil {
+				log.Error().
+					Err(err).
+					Msg("Failed updating calendars:")
+			}
+		})
 	})
 
 	// handle interrupt signal
 	quitChannel := make(chan os.Signal, 1)
-	signal.Notify(quitChannel, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(quitChannel, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 	<-quitChannel
-	worker.Wait()
-
-	// testing
-	fmt.Println(config)
-	fmt.Println(discord)
 }
