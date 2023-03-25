@@ -1,9 +1,8 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -13,29 +12,12 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"google.golang.org/api/calendar/v3"
+	"google.golang.org/api/option"
 )
-
-type ItemTime struct {
-	DateTime time.Time `json:"dateTime"`
-}
-
-type Item struct {
-	Id      string    `json:"id"`
-	Summary string    `json:"summary"`
-	Updated time.Time `json:"updated"`
-	Start   ItemTime  `json:"start"`
-	End     ItemTime  `json:"end"`
-}
-
-type CalendarJson struct {
-	Summary string    `json:"summary"`
-	Updated time.Time `json:"updated"`
-	Items   []Item    `json:"items"`
-}
 
 type Weekday struct {
 	Name  string
-	Items []Item
+	Items []*calendar.Event
 }
 
 type Info struct {
@@ -86,7 +68,21 @@ type WeekOutput struct {
 
 func (day *Weekday) Sort() {
 	sort.Slice(day.Items, func(i, j int) bool {
-		return day.Items[i].Start.DateTime.Before(day.Items[j].Start.DateTime)
+		t1, err := time.Parse(time.RFC3339, day.Items[i].Start.DateTime)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Msg("Failed parsing time")
+			return false
+		}
+		t2, err := time.Parse(time.RFC3339, day.Items[j].Start.DateTime)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Msg("Failed parsing time")
+			return false
+		}
+		return t1.Before(t2)
 	})
 }
 
@@ -118,16 +114,20 @@ func (week *Week) Sort() {
 	worker.Wait()
 }
 
-func (week *Week) Generate(items []Item) {
+func (week *Week) Generate(items []*calendar.Event) {
 	foundItems := false
 
 	for _, item := range items {
-		currentTime := time.Now()
-		if item.Start.DateTime.After(currentTime) && item.Start.DateTime.Before(currentTime.AddDate(0, 0, 7)) {
-			log.Trace().
-				Str("item", fmt.Sprintf("%v", item)).
-				Msg("Appending")
-			switch item.Start.DateTime.Weekday().String() {
+		log.Trace().
+			Str("item", fmt.Sprintf("%v", item)).
+			Msg("Appending")
+		weekday, err := time.Parse(time.RFC3339, item.Start.DateTime)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Msg("Failed parsing time")
+		} else {
+			switch weekday.Weekday().String() {
 			case "Monday":
 				{
 					week.Mon.Items = append(week.Mon.Items, item)
@@ -158,47 +158,61 @@ func (week *Week) Generate(items []Item) {
 				}
 			}
 			foundItems = true
-		} else {
-			log.Trace().
-				Str("item start", fmt.Sprintf("%v", item.Start.DateTime)).
-				Str("item end", fmt.Sprintf("%v", item.End.DateTime)).
-				Str("current time", fmt.Sprintf("%v", currentTime)).
-				Msg("Item not within time scope")
 		}
 	}
 
 	if !foundItems {
-		log.Error().
+		log.Warn().
 			Msg("No items found")
 	}
 
 	week.Sort()
 }
 
-func (day *Weekday) Parse() WeekdayParsed {
-	dayParsed := WeekdayParsed{Name: day.Name, Items: make([]ItemParsed, 0)}
+func (day Weekday) Parse() WeekdayParsed {
+	dayParsed := WeekdayParsed{
+		Name: day.Name,
+		Items: make([]ItemParsed, 0),
+	}
 
 	for _, item := range day.Items {
 		nameinfo := strings.SplitN(item.Summary, ",", 2)
 		name := nameinfo[0]
 		info := nameinfo[1]
-		start := item.Start.DateTime
-		end := item.End.DateTime
+
+		start, err := time.Parse(time.RFC3339, item.Start.DateTime)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Msg("Failed parsing time")
+		}
+		end, err := time.Parse(time.RFC3339, item.End.DateTime)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Msg("Failed parsing time")
+		}
 
 		foundEvent := false
-		for _, itemParsed := range dayParsed.Items {
+		for itemIndex, itemParsed := range dayParsed.Items {
 			compName := strings.ReplaceAll(strings.ToUpper(name), " ", "")
 			compNameParsed := strings.ReplaceAll(strings.ToUpper(itemParsed.Name), " ", "")
 
 			if compName == compNameParsed {
 				foundInfo := false
-				for _, infoParsed := range itemParsed.Infos {
+				for infoIndex, infoParsed := range itemParsed.Infos {
 					compInfo := strings.ReplaceAll(strings.ToUpper(info), " ", "")
 					compInfoParsed := strings.ReplaceAll(strings.ToUpper(infoParsed.Name), " ", "")
 
 					if compInfo == compInfoParsed {
-						infoParsed.Start = append(infoParsed.Start, start)
-						infoParsed.End = append(infoParsed.End, end)
+						log.Trace().
+							Str("compName", compName).
+							Str("compNameParsed", compNameParsed).
+							Str("compInfo", compInfo).
+							Str("compInfoParsed", compInfoParsed).
+							Msg("Same item and info names")
+						dayParsed.Items[itemIndex].Infos[infoIndex].Start = append(infoParsed.Start, start)
+						dayParsed.Items[itemIndex].Infos[infoIndex].End = append(infoParsed.End, end)
 
 						foundInfo = true
 						break
@@ -206,6 +220,10 @@ func (day *Weekday) Parse() WeekdayParsed {
 				}
 
 				if !foundInfo {
+					log.Trace().
+						Str("compName", compName).
+						Str("compNameParsed", compNameParsed).
+						Msg("Same item names, but no info")
 					newInfo := Info{
 						Name:  info,
 						Start: make([]time.Time, 1),
@@ -214,7 +232,7 @@ func (day *Weekday) Parse() WeekdayParsed {
 					newInfo.Start[0] = start
 					newInfo.End[0] = end
 
-					itemParsed.Infos = append(itemParsed.Infos, newInfo)
+					dayParsed.Items[itemIndex].Infos = append(itemParsed.Infos, newInfo)
 				}
 
 				foundEvent = true
@@ -246,6 +264,7 @@ func (day *Weekday) Parse() WeekdayParsed {
 
 func (week *Week) Parse() WeekParsed {
 	weekParsed := WeekParsed{}
+
 	var worker conc.WaitGroup
 
 	worker.Go(func() {
@@ -273,21 +292,26 @@ func (week *Week) Parse() WeekParsed {
 	log.Trace().
 		Msg("Waiting for parse")
 	worker.Wait()
+
 	return weekParsed
 }
 
 func (day *WeekdayParsed) Stringify() string {
+	if len(day.Items) == 0 {
+		return ""
+	}
+
 	spacer := "-------------------------"
 	output := spacer + "\n\n**" + day.Name + ":**\n\n"
 
 	for _, item := range day.Items {
-		output += "--- " + item.Name + " ---\n"
+		output += "--- **" + item.Name + "** ---\n"
 
 		for _, info := range item.Infos {
 			output += info.Name + "\n"
 
 			for index := range info.Start {
-				output += "**" + info.Start[index].Format("03:04") + "** - " + info.End[index].Format("03:04") + "\n"
+				output += "**" + info.Start[index].Format("15:04") + "** - " + info.End[index].Format("15:04") + "\n"
 			}
 		}
 
@@ -298,7 +322,7 @@ func (day *WeekdayParsed) Stringify() string {
 	return output
 }
 
-func generateAndParseWeek(items []Item) WeekParsed {
+func generateAndParseWeek(items []*calendar.Event) WeekParsed {
 	week := Week{
 		Mon: Weekday{
 			Name: "Monday",
@@ -332,45 +356,45 @@ func generateAndParseWeek(items []Item) WeekParsed {
 	return weekParsed
 }
 
-func updateCalendar(calendar Calendar, discord *discordgo.Session, google Google) (WeekParsed, error) {
+func updateCalendar(calendarId string, discord *discordgo.Session, google Google) (WeekParsed, error) {
 	week := WeekParsed{}
 
-	url := fmt.Sprintf("https://www.googleapis.com/calendar/v3/calendars/%s@group.calendar.google.com/events?key=%s", calendar.Id, google.Token)
-
 	log.Trace().
-		Str("url", url).
 		Msg("Getting calendar via API")
 
 	ctx := context.Background()
 	calendarService, err := calendar.NewService(ctx, option.WithAPIKey(google.Token))
-
-	resp, err := http.Get(url)
 	if err != nil {
 		return week, err
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return week, fmt.Errorf("request was not OK: %s", resp.Status)
-	}
-
-	dec := json.NewDecoder(resp.Body)
-	var calendarJson CalendarJson
-	err = dec.Decode(&calendarJson)
+	currentTime := time.Now().Format(time.RFC3339)
+	weekTime := time.Now().AddDate(0, 0, 7).Format(time.RFC3339)
+	calendar, err := calendarService.Events.List(calendarId).ShowDeleted(false).
+		SingleEvents(true).TimeMin(currentTime).TimeMax(weekTime).OrderBy("startTime").Do()
 	if err != nil {
 		return week, err
 	}
+
 	log.Debug().
-		Str("Calendar JSON", fmt.Sprintf("%v", calendarJson)).
 		Msg("Decoded API response")
 
-	week = generateAndParseWeek(calendarJson.Items)
+	week = generateAndParseWeek(calendar.Items)
 	return week, nil
 }
 
-func outputWeek(week WeekParsed, discord *discordgo.Session) error {
-	weekOutput := WeekOutput{}
+func outputDay(day string, channelId string, discord *discordgo.Session) error {
+	if day != "" {
+		_, err := discord.ChannelMessageSend(channelId, day)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
+func outputWeek(channelId string, week WeekParsed, discord *discordgo.Session) error {
+	weekOutput := WeekOutput{}
 	var worker conc.WaitGroup
 
 	worker.Go(func() {
@@ -399,10 +423,49 @@ func outputWeek(week WeekParsed, discord *discordgo.Session) error {
 		Msg("Waiting for stringification")
 	worker.Wait()
 
-	//! temporary
-	fmt.Print(weekOutput.Mon)
-	fmt.Print(weekOutput.Tue)
-	fmt.Print(weekOutput.Wed)
+	messageObjects, err := discord.ChannelMessages(channelId, 100, "", "", "")
+	if err != nil {
+		return err
+	}
+
+	messageIds := make([]string, 0)
+	for _, messageObject := range messageObjects {
+		messageIds = append(messageIds, messageObject.ID)
+	}
+
+	err = discord.ChannelMessagesBulkDelete(channelId, messageIds)
+	if err != nil {
+		return err
+	}
+
+	err = outputDay(weekOutput.Mon, channelId, discord)
+	if err != nil {
+		return err
+	}
+	err = outputDay(weekOutput.Tue, channelId, discord)
+	if err != nil {
+		return err
+	}
+	err = outputDay(weekOutput.Wed, channelId, discord)
+	if err != nil {
+		return err
+	}
+	err = outputDay(weekOutput.Thu, channelId, discord)
+	if err != nil {
+		return err
+	}
+	err = outputDay(weekOutput.Fri, channelId, discord)
+	if err != nil {
+		return err
+	}
+	err = outputDay(weekOutput.Sat, channelId, discord)
+	if err != nil {
+		return err
+	}
+	err = outputDay(weekOutput.Sun, channelId, discord)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -410,39 +473,39 @@ func outputWeek(week WeekParsed, discord *discordgo.Session) error {
 func updateCalendars(calendars []Calendar, discord *discordgo.Session, google Google) error {
 	var worker conc.WaitGroup
 	for _, calendarIterator := range calendars {
-		calendar := calendarIterator
+		calendarObject := calendarIterator
 		worker.Go(func() {
 			for {
 				log.Debug().
-					Str("name", calendar.Name).
+					Str("name", calendarObject.Name).
 					Msg("Updating calendar")
 
-				week, err := updateCalendar(calendar, discord, google)
+				week, err := updateCalendar(calendarObject.Id, discord, google)
 				if err != nil {
 					log.Error().
 						Err(err).
-						Msg(fmt.Sprintf("Failed while updating calendar %s:", calendar.Name))
+						Msg(fmt.Sprintf("Failed while updating calendar %s:", calendarObject.Name))
 				}
 
 				log.Trace().
-					Str("name", calendar.Name).
+					Str("name", calendarObject.Name).
 					Msg("Outputting calendar")
 
-				err = outputWeek(week, discord)
+				err = outputWeek(calendarObject.ChannelId, week, discord)
 				if err != nil {
 					log.Error().
 						Err(err).
-						Msg(fmt.Sprintf("Failed while outputting calendar %s:", calendar.Name))
+						Msg(fmt.Sprintf("Failed while outputting calendar %s:", calendarObject.Name))
 				}
 
 				log.Trace().
-					Str("name", calendar.Name).
+					Str("name", calendarObject.Name).
 					Msg("Sleeping calendar")
 
-				if calendar.TimeBetweenChecks == 0 {
+				if calendarObject.TimeBetweenChecks == 0 {
 					time.Sleep(time.Hour * 3)
 				} else {
-					time.Sleep(time.Hour * time.Duration(calendar.TimeBetweenChecks))
+					time.Sleep(time.Hour * time.Duration(calendarObject.TimeBetweenChecks))
 				}
 			}
 		})
