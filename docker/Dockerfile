@@ -13,5 +13,8 @@ COPY ["docker/smerac-go.yml.example", "/config/smerac.yml"]
 # Binary
 COPY ["dist/smerac-go_${TARGETOS}_${TARGETARCH}${TARGETVARIANT:+_7}/smerac-go", "/app/smerac-go/smerac-go"]
 
+# Add root files
+COPY ["docker/run", "/etc/services.d/smerac-go/run"]
+
 # Volume
 VOLUME ["/config"]
