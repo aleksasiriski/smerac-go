@@ -1,4 +1,7 @@
 discord:
   token:
+  guildid:
+google:
+  token:
 roles:
 calendars:
