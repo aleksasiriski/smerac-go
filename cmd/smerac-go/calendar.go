@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -66,54 +65,6 @@ type WeekOutput struct {
 	Sun string
 }
 
-func (day *Weekday) Sort() {
-	sort.Slice(day.Items, func(i, j int) bool {
-		t1, err := time.Parse(time.RFC3339, day.Items[i].Start.DateTime)
-		if err != nil {
-			log.Error().
-				Err(err).
-				Msg("Failed parsing time")
-			return false
-		}
-		t2, err := time.Parse(time.RFC3339, day.Items[j].Start.DateTime)
-		if err != nil {
-			log.Error().
-				Err(err).
-				Msg("Failed parsing time")
-			return false
-		}
-		return t1.Before(t2)
-	})
-}
-
-func (week *Week) Sort() {
-	var worker conc.WaitGroup
-
-	worker.Go(func() {
-		week.Mon.Sort()
-	})
-	worker.Go(func() {
-		week.Tue.Sort()
-	})
-	worker.Go(func() {
-		week.Wed.Sort()
-	})
-	worker.Go(func() {
-		week.Thu.Sort()
-	})
-	worker.Go(func() {
-		week.Fri.Sort()
-	})
-	worker.Go(func() {
-		week.Sat.Sort()
-	})
-	worker.Go(func() {
-		week.Sun.Sort()
-	})
-
-	worker.Wait()
-}
-
 func (week *Week) Generate(items []*calendar.Event) {
 	foundItems := false
 
@@ -165,13 +116,11 @@ func (week *Week) Generate(items []*calendar.Event) {
 		log.Warn().
 			Msg("No items found")
 	}
-
-	week.Sort()
 }
 
 func (day Weekday) Parse() WeekdayParsed {
 	dayParsed := WeekdayParsed{
-		Name: day.Name,
+		Name:  day.Name,
 		Items: make([]ItemParsed, 0),
 	}
 
@@ -296,7 +245,7 @@ func (week *Week) Parse() WeekParsed {
 	return weekParsed
 }
 
-func (day *WeekdayParsed) Stringify() string {
+func (day WeekdayParsed) Stringify() string {
 	if len(day.Items) == 0 {
 		return ""
 	}
@@ -320,6 +269,38 @@ func (day *WeekdayParsed) Stringify() string {
 	output += spacer + "\n"
 
 	return output
+}
+
+func (week WeekParsed) Stringify() WeekOutput {
+	weekOutput := WeekOutput{}
+	var worker conc.WaitGroup
+
+	worker.Go(func() {
+		weekOutput.Mon = week.Mon.Stringify()
+	})
+	worker.Go(func() {
+		weekOutput.Tue = week.Tue.Stringify()
+	})
+	worker.Go(func() {
+		weekOutput.Wed = week.Wed.Stringify()
+	})
+	worker.Go(func() {
+		weekOutput.Thu = week.Thu.Stringify()
+	})
+	worker.Go(func() {
+		weekOutput.Fri = week.Fri.Stringify()
+	})
+	worker.Go(func() {
+		weekOutput.Sat = week.Sat.Stringify()
+	})
+	worker.Go(func() {
+		weekOutput.Sun = week.Sun.Stringify()
+	})
+
+	log.Trace().
+		Msg("Waiting for stringification")
+	worker.Wait()
+	return weekOutput
 }
 
 func generateAndParseWeek(items []*calendar.Event) WeekParsed {
@@ -393,36 +374,7 @@ func outputDay(day string, channelId string, discord *discordgo.Session) error {
 	return nil
 }
 
-func outputWeek(channelId string, week WeekParsed, discord *discordgo.Session) error {
-	weekOutput := WeekOutput{}
-	var worker conc.WaitGroup
-
-	worker.Go(func() {
-		weekOutput.Mon = week.Mon.Stringify()
-	})
-	worker.Go(func() {
-		weekOutput.Tue = week.Tue.Stringify()
-	})
-	worker.Go(func() {
-		weekOutput.Wed = week.Wed.Stringify()
-	})
-	worker.Go(func() {
-		weekOutput.Thu = week.Thu.Stringify()
-	})
-	worker.Go(func() {
-		weekOutput.Fri = week.Fri.Stringify()
-	})
-	worker.Go(func() {
-		weekOutput.Sat = week.Sat.Stringify()
-	})
-	worker.Go(func() {
-		weekOutput.Sun = week.Sun.Stringify()
-	})
-
-	log.Trace().
-		Msg("Waiting for stringification")
-	worker.Wait()
-
+func outputWeek(channelId string, week WeekOutput, discord *discordgo.Session) error {
 	messageObjects, err := discord.ChannelMessages(channelId, 100, "", "", "")
 	if err != nil {
 		return err
@@ -438,31 +390,31 @@ func outputWeek(channelId string, week WeekParsed, discord *discordgo.Session) e
 		return err
 	}
 
-	err = outputDay(weekOutput.Mon, channelId, discord)
+	err = outputDay(week.Mon, channelId, discord)
 	if err != nil {
 		return err
 	}
-	err = outputDay(weekOutput.Tue, channelId, discord)
+	err = outputDay(week.Tue, channelId, discord)
 	if err != nil {
 		return err
 	}
-	err = outputDay(weekOutput.Wed, channelId, discord)
+	err = outputDay(week.Wed, channelId, discord)
 	if err != nil {
 		return err
 	}
-	err = outputDay(weekOutput.Thu, channelId, discord)
+	err = outputDay(week.Thu, channelId, discord)
 	if err != nil {
 		return err
 	}
-	err = outputDay(weekOutput.Fri, channelId, discord)
+	err = outputDay(week.Fri, channelId, discord)
 	if err != nil {
 		return err
 	}
-	err = outputDay(weekOutput.Sat, channelId, discord)
+	err = outputDay(week.Sat, channelId, discord)
 	if err != nil {
 		return err
 	}
-	err = outputDay(weekOutput.Sun, channelId, discord)
+	err = outputDay(week.Sun, channelId, discord)
 	if err != nil {
 		return err
 	}
@@ -470,11 +422,37 @@ func outputWeek(channelId string, week WeekParsed, discord *discordgo.Session) e
 	return nil
 }
 
+func sameWeeks(weekA WeekOutput, weekB WeekOutput) bool {
+	if weekA.Mon != weekB.Mon {
+		return false
+	}
+	if weekA.Tue != weekB.Tue {
+		return false
+	}
+	if weekA.Wed != weekB.Wed {
+		return false
+	}
+	if weekA.Thu != weekB.Thu {
+		return false
+	}
+	if weekA.Fri != weekB.Fri {
+		return false
+	}
+	if weekA.Sat != weekB.Sat {
+		return false
+	}
+	if weekA.Sun != weekB.Sun {
+		return false
+	}
+	return true
+}
+
 func updateCalendars(calendars []Calendar, discord *discordgo.Session, google Google) error {
 	var worker conc.WaitGroup
 	for _, calendarIterator := range calendars {
 		calendarObject := calendarIterator
 		worker.Go(func() {
+			weekOutputOld := WeekOutput{}
 			for {
 				log.Debug().
 					Str("name", calendarObject.Name).
@@ -486,16 +464,24 @@ func updateCalendars(calendars []Calendar, discord *discordgo.Session, google Go
 						Err(err).
 						Msg(fmt.Sprintf("Failed while updating calendar %s:", calendarObject.Name))
 				}
+				weekOutput := week.Stringify()
 
-				log.Trace().
-					Str("name", calendarObject.Name).
-					Msg("Outputting calendar")
+				if sameWeeks(weekOutput, weekOutputOld) {
+					log.Debug().
+						Str("name", calendarObject.Name).
+						Msg("Calendar is the same")
+				} else {
+					weekOutputOld = weekOutput
+					log.Trace().
+						Str("name", calendarObject.Name).
+						Msg("Outputting calendar")
 
-				err = outputWeek(calendarObject.ChannelId, week, discord)
-				if err != nil {
-					log.Error().
-						Err(err).
-						Msg(fmt.Sprintf("Failed while outputting calendar %s:", calendarObject.Name))
+					err = outputWeek(calendarObject.ChannelId, weekOutput, discord)
+					if err != nil {
+						log.Error().
+							Err(err).
+							Msg(fmt.Sprintf("Failed while outputting calendar %s:", calendarObject.Name))
+					}
 				}
 
 				log.Trace().

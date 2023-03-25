@@ -7,7 +7,7 @@ import (
 )
 
 type Discord struct {
-	Token string `mapstructure:"TOKEN"`
+	Token   string `mapstructure:"TOKEN"`
 	GuildId string `mapstructure:"GUILDID"`
 }
 
