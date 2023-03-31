@@ -20,11 +20,22 @@ type Role struct {
 	Name string `mapstructure:"NAME"`
 }
 
+type NamedDays struct {
+	Monday    string `mapstructure:"MONDAY"`
+	Tuesday   string `mapstructure:"TUESDAY"`
+	Wednesday string `mapstructure:"WEDNESDAY"`
+	Thursday  string `mapstructure:"THURSDAY"`
+	Friday    string `mapstructure:"FRIDAY"`
+	Saturday  string `mapstructure:"SATURDAY"`
+	Sunday    string `mapstructure:"SUNDAY"`
+}
+
 type Calendar struct {
-	Id                string `mapstructure:"ID"`
-	ChannelId         string `mapstructure:"CHANNELID"`
-	Name              string `mapstructure:"NAME"`
-	TimeBetweenChecks int    `mapstructure:"TIME"`
+	Id                string    `mapstructure:"ID"`
+	ChannelId         string    `mapstructure:"CHANNELID"`
+	Name              string    `mapstructure:"NAME"`
+	TimeBetweenChecks int       `mapstructure:"TIME"`
+	NamedDays         NamedDays `mapstructure:"NAMEDDAYS"`
 }
 
 type Config struct {
@@ -59,6 +70,30 @@ func LoadConfig(path string) (Config, error) {
 
 	if config.Discord.Token == "" {
 		return config, fmt.Errorf("discord token can't be empty")
+	}
+
+	for index, calendar := range config.Calendars {
+		if calendar.NamedDays.Monday == "" {
+			config.Calendars[index].NamedDays.Monday = "Monday"
+		}
+		if calendar.NamedDays.Tuesday == "" {
+			config.Calendars[index].NamedDays.Tuesday = "Tuesday"
+		}
+		if calendar.NamedDays.Wednesday == "" {
+			config.Calendars[index].NamedDays.Wednesday = "Wednesday"
+		}
+		if calendar.NamedDays.Thursday == "" {
+			config.Calendars[index].NamedDays.Thursday = "Thursday"
+		}
+		if calendar.NamedDays.Friday == "" {
+			config.Calendars[index].NamedDays.Friday = "Friday"
+		}
+		if calendar.NamedDays.Saturday == "" {
+			config.Calendars[index].NamedDays.Saturday = "Saturday"
+		}
+		if calendar.NamedDays.Sunday == "" {
+			config.Calendars[index].NamedDays.Sunday = "Sunday"
+		}
 	}
 
 	return config, err

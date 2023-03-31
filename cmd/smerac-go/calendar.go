@@ -303,28 +303,28 @@ func (week WeekParsed) Stringify() WeekOutput {
 	return weekOutput
 }
 
-func generateAndParseWeek(items []*calendar.Event) WeekParsed {
+func generateAndParseWeek(items []*calendar.Event, namedDays NamedDays) WeekParsed {
 	week := Week{
 		Mon: Weekday{
-			Name: "Monday",
+			Name: namedDays.Monday,
 		},
 		Tue: Weekday{
-			Name: "Tuesday",
+			Name: namedDays.Tuesday,
 		},
 		Wed: Weekday{
-			Name: "Wednesday",
+			Name: namedDays.Wednesday,
 		},
 		Thu: Weekday{
-			Name: "Thursday",
+			Name: namedDays.Thursday,
 		},
 		Fri: Weekday{
-			Name: "Friday",
+			Name: namedDays.Friday,
 		},
 		Sat: Weekday{
-			Name: "Saturday",
+			Name: namedDays.Saturday,
 		},
 		Sun: Weekday{
-			Name: "Sunday",
+			Name: namedDays.Sunday,
 		},
 	}
 
@@ -337,7 +337,7 @@ func generateAndParseWeek(items []*calendar.Event) WeekParsed {
 	return weekParsed
 }
 
-func updateCalendar(calendarId string, discord *discordgo.Session, google Google) (WeekParsed, error) {
+func updateCalendar(calendarId string, namedDays NamedDays, discord *discordgo.Session, google Google) (WeekParsed, error) {
 	week := WeekParsed{}
 
 	log.Trace().
@@ -360,7 +360,7 @@ func updateCalendar(calendarId string, discord *discordgo.Session, google Google
 	log.Debug().
 		Msg("Decoded API response")
 
-	week = generateAndParseWeek(calendar.Items)
+	week = generateAndParseWeek(calendar.Items, namedDays)
 	return week, nil
 }
 
@@ -458,7 +458,7 @@ func updateCalendars(calendars []Calendar, discord *discordgo.Session, google Go
 					Str("name", calendarObject.Name).
 					Msg("Updating calendar")
 
-				week, err := updateCalendar(calendarObject.Id, discord, google)
+				week, err := updateCalendar(calendarObject.Id, calendarObject.NamedDays, discord, google)
 				if err != nil {
 					log.Error().
 						Err(err).
