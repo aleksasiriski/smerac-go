@@ -266,7 +266,7 @@ func (day WeekdayParsed) Stringify() string {
 
 		output += "\n"
 	}
-	output += spacer + "\n"
+	output += spacer
 
 	return output
 }
@@ -422,6 +422,41 @@ func outputWeek(channelId string, week WeekOutput, discord *discordgo.Session) e
 	return nil
 }
 
+func getOldWeekOutput(channelId string, namedDays NamedDays, discord *discordgo.Session) (WeekOutput, error) {
+	weekOutput := WeekOutput{}
+	
+	messageObjects, err := discord.ChannelMessages(channelId, 100, "", "", "")
+	if err != nil {
+		return weekOutput, err
+	}
+
+	for _, messageObject := range messageObjects {
+		if strings.Contains(messageObject.Content, namedDays.Monday) {
+			weekOutput.Mon = messageObject.Content
+		}
+		if strings.Contains(messageObject.Content, namedDays.Tuesday) {
+			weekOutput.Tue = messageObject.Content
+		}
+		if strings.Contains(messageObject.Content, namedDays.Wednesday) {
+			weekOutput.Wed = messageObject.Content
+		}
+		if strings.Contains(messageObject.Content, namedDays.Thursday) {
+			weekOutput.Thu = messageObject.Content
+		}
+		if strings.Contains(messageObject.Content, namedDays.Friday) {
+			weekOutput.Fri = messageObject.Content
+		}
+		if strings.Contains(messageObject.Content, namedDays.Saturday) {
+			weekOutput.Sat = messageObject.Content
+		}
+		if strings.Contains(messageObject.Content, namedDays.Sunday) {
+			weekOutput.Sun = messageObject.Content
+		}
+	}
+
+	return weekOutput, nil
+}
+
 func sameWeeks(weekA WeekOutput, weekB WeekOutput) bool {
 	if weekA.Mon != weekB.Mon {
 		return false
@@ -452,7 +487,6 @@ func updateCalendars(calendars []Calendar, discord *discordgo.Session, google Go
 	for _, calendarIterator := range calendars {
 		calendarObject := calendarIterator
 		worker.Go(func() {
-			weekOutputOld := WeekOutput{}
 			for {
 				log.Debug().
 					Str("name", calendarObject.Name).
@@ -465,13 +499,22 @@ func updateCalendars(calendars []Calendar, discord *discordgo.Session, google Go
 						Msg(fmt.Sprintf("Failed while updating calendar %s:", calendarObject.Name))
 				}
 				weekOutput := week.Stringify()
-
+				weekOutputOld, err := getOldWeekOutput(calendarObject.ChannelId, calendarObject.NamedDays, discord)
+				if err != nil {
+					log.Error().
+						Err(err).
+						Msg(fmt.Sprintf("Failed while getting old calendar %s:", calendarObject.Name))
+				}
+				
+				log.Debug().
+					Str("new", fmt.Sprintf("%v", weekOutput)).
+					Str("old", fmt.Sprintf("%v", weekOutputOld)).
+					Msg("Comparing calendars")
 				if sameWeeks(weekOutput, weekOutputOld) {
 					log.Debug().
 						Str("name", calendarObject.Name).
 						Msg("Calendar is the same")
 				} else {
-					weekOutputOld = weekOutput
 					log.Trace().
 						Str("name", calendarObject.Name).
 						Msg("Outputting calendar")
