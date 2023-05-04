@@ -6,6 +6,6 @@ ENV SMERAC_GO_CONFIG="/home/nonroot" \
 COPY smerac-go .
 COPY apps/smerac-go/smerac-go.yml .
 
-ENTRYPOINT ["smerac-go"]
+ENTRYPOINT ["./smerac-go"]
 
 LABEL org.opencontainers.image.source="https://github.com/aleksasiriski/smerac-go"
