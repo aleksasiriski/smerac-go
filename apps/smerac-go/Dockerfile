@@ -1,9 +1,11 @@
 FROM gcr.io/distroless/static-debian11:nonroot
 
-COPY apps/smerac-go/smerac-go.yml.example /config/smerac.yml
 COPY smerac-go /app/smerac-go
+COPY apps/smerac-go/smerac-go.yml.example /config/smerac.yml
 
 RUN chown -R nonroot:nonroot /config
+
+USER nonroot
 
 ENTRYPOINT ["/app/smerac-go"]
 
