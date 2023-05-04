@@ -21,9 +21,9 @@ var (
 	// CLI
 	cli struct {
 		// flags
-		Config    string `type:"path" default:"${config_dir}" env:"RFFMPEG_AUTOSCALER_CONFIG" help:"Config file path"`
-		Log       string `type:"path" default:"${log_file}" env:"RFFMPEG_AUTOSCALER_LOG" help:"Log file path"`
-		Verbosity int    `type:"counter" default:"0" short:"v" env:"RFFMPEG_AUTOSCALER_VERBOSITY" help:"Log level verbosity"`
+		Config    string `type:"path" default:"${config_dir}" env:"SMERAC_GO_CONFIG" help:"Config file path"`
+		Log       string `type:"path" default:"${log_file}" env:"SMERAC_GO_LOG" help:"Log file path"`
+		Verbosity int    `type:"counter" default:"0" short:"v" env:"SMERAC_GO_VERBOSITY" help:"Log level verbosity"`
 	}
 )
 
@@ -38,8 +38,8 @@ func main() {
 			Compact: true,
 		}),
 		kong.Vars{
-			"config_dir": "/config",
-			"log_file":   "/config/log/smerac.log",
+			"config_dir": "/etc/smerac-go",
+			"log_file":   "/var/log/smerac-go.log",
 		},
 	)
 

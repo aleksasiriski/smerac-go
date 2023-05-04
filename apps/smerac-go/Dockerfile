@@ -1,12 +1,11 @@
 FROM gcr.io/distroless/static-debian11:nonroot
 
-COPY smerac-go /app/smerac-go
-COPY apps/smerac-go/smerac-go.yml.example /config/smerac.yml
+ENV SMERAC_GO_CONFIG="/home/nonroot" \
+    SMERAC_GO_LOG="/home/nonroot/smerac-go.log"
 
-RUN ["chown", "-R", "nonroot:nonroot", "/config"]
+COPY smerac-go .
+COPY apps/smerac-go/smerac-go.yml .
 
-USER nonroot
-
-ENTRYPOINT ["/app/smerac-go"]
+ENTRYPOINT ["smerac-go"]
 
 LABEL org.opencontainers.image.source="https://github.com/aleksasiriski/smerac-go"
