@@ -5,7 +5,7 @@ go 1.19
 require (
 	github.com/alecthomas/kong v0.8.0
 	github.com/bwmarrin/discordgo v0.27.1
-	github.com/rs/zerolog v1.29.1
+	github.com/rs/zerolog v1.30.0
 	github.com/sourcegraph/conc v0.3.0
 	github.com/spf13/viper v1.16.0
 	google.golang.org/api v0.134.0
