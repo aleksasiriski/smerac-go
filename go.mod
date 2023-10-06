@@ -8,7 +8,7 @@ require (
 	github.com/rs/zerolog v1.31.0
 	github.com/sourcegraph/conc v0.3.0
 	github.com/spf13/viper v1.16.0
-	google.golang.org/api v0.144.0
+	google.golang.org/api v0.145.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
