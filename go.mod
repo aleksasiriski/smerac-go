@@ -3,7 +3,7 @@ module github.com/aleksasiriski/smerac-go
 go 1.19
 
 require (
-	github.com/alecthomas/kong v0.8.0
+	github.com/alecthomas/kong v0.8.1
 	github.com/bwmarrin/discordgo v0.27.1
 	github.com/rs/zerolog v1.31.0
 	github.com/sourcegraph/conc v0.3.0
