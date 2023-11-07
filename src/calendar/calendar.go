@@ -30,7 +30,7 @@ func (week *Week) Generate(items []*calendar.Event) {
 		} else {
 			switch weekday.Weekday().String() {
 			case "Monday":
-				{smerac-go
+				{
 					week.Mon.Items = append(week.Mon.Items, item)
 				}
 			case "Tuesday":
