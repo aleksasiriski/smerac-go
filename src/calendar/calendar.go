@@ -1,4 +1,4 @@
-package main
+package calendar
 
 import (
 	"context"
@@ -8,62 +8,12 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/sourcegraph/conc"
-
-	"github.com/bwmarrin/discordgo"
 	"google.golang.org/api/calendar/v3"
 	"google.golang.org/api/option"
+
+	"github.com/aleksasiriski/smerac-go/src/config"
+	"github.com/aleksasiriski/smerac-go/src/webhook"
 )
-
-type Weekday struct {
-	Name  string
-	Items []*calendar.Event
-}
-
-type Info struct {
-	Name  string
-	Start []time.Time
-	End   []time.Time
-}
-
-type Week struct {
-	Mon Weekday
-	Tue Weekday
-	Wed Weekday
-	Thu Weekday
-	Fri Weekday
-	Sat Weekday
-	Sun Weekday
-}
-
-type ItemParsed struct {
-	Name  string
-	Infos []Info
-}
-
-type WeekdayParsed struct {
-	Name  string
-	Items []ItemParsed
-}
-
-type WeekParsed struct {
-	Mon WeekdayParsed
-	Tue WeekdayParsed
-	Wed WeekdayParsed
-	Thu WeekdayParsed
-	Fri WeekdayParsed
-	Sat WeekdayParsed
-	Sun WeekdayParsed
-}
-
-type WeekOutput struct {
-	Mon string
-	Tue string
-	Wed string
-	Thu string
-	Fri string
-	Sat string
-	Sun string
-}
 
 func (week *Week) Generate(items []*calendar.Event) {
 	foundItems := false
@@ -303,7 +253,7 @@ func (week WeekParsed) Stringify() WeekOutput {
 	return weekOutput
 }
 
-func generateAndParseWeek(items []*calendar.Event, namedDays NamedDays) WeekParsed {
+func generateAndParseWeek(items []*calendar.Event, namedDays config.NamedDays) WeekParsed {
 	week := Week{
 		Mon: Weekday{
 			Name: namedDays.Monday,
@@ -337,7 +287,7 @@ func generateAndParseWeek(items []*calendar.Event, namedDays NamedDays) WeekPars
 	return weekParsed
 }
 
-func updateCalendar(calendarId string, namedDays NamedDays, discord *discordgo.Session, google Google) (WeekParsed, error) {
+func updateCalendar(calendarId string, namedDays config.NamedDays, google config.Google) (WeekParsed, error) {
 	week := WeekParsed{}
 
 	log.Trace().
@@ -351,108 +301,101 @@ func updateCalendar(calendarId string, namedDays NamedDays, discord *discordgo.S
 
 	currentTime := time.Now().Format(time.RFC3339)
 	weekTime := time.Now().AddDate(0, 0, 7).Format(time.RFC3339)
-	calendar, err := calendarService.Events.List(calendarId).ShowDeleted(false).
-		SingleEvents(true).TimeMin(currentTime).TimeMax(weekTime).OrderBy("startTime").Do()
-	if err != nil {
+
+	if calendar, err := calendarService.Events.List(calendarId).ShowDeleted(false).
+		SingleEvents(true).TimeMin(currentTime).TimeMax(weekTime).OrderBy("startTime").Do(); err != nil {
 		return week, err
+	} else {
+		log.Debug().Msg("Decoded API response")
+		week = generateAndParseWeek(calendar.Items, namedDays)
 	}
 
-	log.Debug().
-		Msg("Decoded API response")
-
-	week = generateAndParseWeek(calendar.Items, namedDays)
 	return week, nil
 }
 
-func outputDay(day string, channelId string, discord *discordgo.Session) error {
+func outputDay(day string, webhookUrl string) error {
 	if day != "" {
-		_, err := discord.ChannelMessageSend(channelId, day)
-		if err != nil {
+		if err := webhook.SendMessage(webhookUrl, webhook.Message{
+			Content: day,
+		}); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func outputWeek(channelId string, week WeekOutput, discord *discordgo.Session) error {
-	messageObjects, err := discord.ChannelMessages(channelId, 100, "", "", "")
-	if err != nil {
-		return err
-	}
+func outputWeek(channelId string, week WeekOutput) error {
+	// messageObjects, err := ChannelMessages(channelId, 100, "", "", "")
+	// if err != nil {
+	// 	return err
+	// }
 
-	messageIds := make([]string, 0)
-	for _, messageObject := range messageObjects {
-		messageIds = append(messageIds, messageObject.ID)
-	}
+	// messageIds := make([]string, 0)
+	// for _, messageObject := range messageObjects {
+	// 	messageIds = append(messageIds, messageObject.ID)
+	// }
 
-	err = discord.ChannelMessagesBulkDelete(channelId, messageIds)
-	if err != nil {
-		return err
-	}
+	// err = ChannelMessagesBulkDelete(channelId, messageIds)
+	// if err != nil {
+	// 	return err
+	// }
 
-	err = outputDay(week.Mon, channelId, discord)
-	if err != nil {
+	if err := outputDay(week.Mon, channelId); err != nil {
 		return err
 	}
-	err = outputDay(week.Tue, channelId, discord)
-	if err != nil {
+	if err := outputDay(week.Tue, channelId); err != nil {
 		return err
 	}
-	err = outputDay(week.Wed, channelId, discord)
-	if err != nil {
+	if err := outputDay(week.Wed, channelId); err != nil {
 		return err
 	}
-	err = outputDay(week.Thu, channelId, discord)
-	if err != nil {
+	if err := outputDay(week.Thu, channelId); err != nil {
 		return err
 	}
-	err = outputDay(week.Fri, channelId, discord)
-	if err != nil {
+	if err := outputDay(week.Fri, channelId); err != nil {
 		return err
 	}
-	err = outputDay(week.Sat, channelId, discord)
-	if err != nil {
+	if err := outputDay(week.Sat, channelId); err != nil {
 		return err
 	}
-	err = outputDay(week.Sun, channelId, discord)
-	if err != nil {
+	if err := outputDay(week.Sun, channelId); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func getOldWeekOutput(channelId string, namedDays NamedDays, discord *discordgo.Session) (WeekOutput, error) {
+func getOldWeekOutput(webhookUrl string, namedDays config.NamedDays) (WeekOutput, error) {
 	weekOutput := WeekOutput{}
-	
-	messageObjects, err := discord.ChannelMessages(channelId, 100, "", "", "")
-	if err != nil {
-		return weekOutput, err
-	}
 
-	for _, messageObject := range messageObjects {
-		if strings.Contains(messageObject.Content, namedDays.Monday) {
-			weekOutput.Mon = messageObject.Content
-		}
-		if strings.Contains(messageObject.Content, namedDays.Tuesday) {
-			weekOutput.Tue = messageObject.Content
-		}
-		if strings.Contains(messageObject.Content, namedDays.Wednesday) {
-			weekOutput.Wed = messageObject.Content
-		}
-		if strings.Contains(messageObject.Content, namedDays.Thursday) {
-			weekOutput.Thu = messageObject.Content
-		}
-		if strings.Contains(messageObject.Content, namedDays.Friday) {
-			weekOutput.Fri = messageObject.Content
-		}
-		if strings.Contains(messageObject.Content, namedDays.Saturday) {
-			weekOutput.Sat = messageObject.Content
-		}
-		if strings.Contains(messageObject.Content, namedDays.Sunday) {
-			weekOutput.Sun = messageObject.Content
-		}
-	}
+	// messageObjects, err := discord.ChannelMessages(channelId, 100, "", "", "")
+	// if err != nil {
+	// 	return weekOutput, err
+	// }
+
+	// for _, messageObject := range messageObjects {
+	// 	if strings.Contains(messageObject.Content, namedDays.Monday) {
+	// 		weekOutput.Mon = messageObject.Content
+	// 	}
+	// 	if strings.Contains(messageObject.Content, namedDays.Tuesday) {
+	// 		weekOutput.Tue = messageObject.Content
+	// 	}
+	// 	if strings.Contains(messageObject.Content, namedDays.Wednesday) {
+	// 		weekOutput.Wed = messageObject.Content
+	// 	}
+	// 	if strings.Contains(messageObject.Content, namedDays.Thursday) {
+	// 		weekOutput.Thu = messageObject.Content
+	// 	}
+	// 	if strings.Contains(messageObject.Content, namedDays.Friday) {
+	// 		weekOutput.Fri = messageObject.Content
+	// 	}
+	// 	if strings.Contains(messageObject.Content, namedDays.Saturday) {
+	// 		weekOutput.Sat = messageObject.Content
+	// 	}
+	// 	if strings.Contains(messageObject.Content, namedDays.Sunday) {
+	// 		weekOutput.Sun = messageObject.Content
+	// 	}
+	// }
 
 	return weekOutput, nil
 }
@@ -482,9 +425,9 @@ func sameWeeks(weekA WeekOutput, weekB WeekOutput) bool {
 	return true
 }
 
-func updateCalendars(calendars []Calendar, discord *discordgo.Session, google Google) error {
+func Update(ctx context.Context, conf *config.Config) {
 	var worker conc.WaitGroup
-	for _, calendarIterator := range calendars {
+	for _, calendarIterator := range conf.Calendars {
 		calendarObject := calendarIterator
 		worker.Go(func() {
 			for {
@@ -492,20 +435,20 @@ func updateCalendars(calendars []Calendar, discord *discordgo.Session, google Go
 					Str("name", calendarObject.Name).
 					Msg("Updating calendar")
 
-				week, err := updateCalendar(calendarObject.Id, calendarObject.NamedDays, discord, google)
+				week, err := updateCalendar(calendarObject.Id, conf.Days, conf.Google)
 				if err != nil {
 					log.Error().
 						Err(err).
 						Msg(fmt.Sprintf("Failed while updating calendar %s:", calendarObject.Name))
 				}
 				weekOutput := week.Stringify()
-				weekOutputOld, err := getOldWeekOutput(calendarObject.ChannelId, calendarObject.NamedDays, discord)
+				weekOutputOld, err := getOldWeekOutput(calendarObject.Webhook, conf.Days)
 				if err != nil {
 					log.Error().
 						Err(err).
 						Msg(fmt.Sprintf("Failed while getting old calendar %s:", calendarObject.Name))
 				}
-				
+
 				log.Debug().
 					Str("new", fmt.Sprintf("%v", weekOutput)).
 					Str("old", fmt.Sprintf("%v", weekOutputOld)).
@@ -519,8 +462,7 @@ func updateCalendars(calendars []Calendar, discord *discordgo.Session, google Go
 						Str("name", calendarObject.Name).
 						Msg("Outputting calendar")
 
-					err = outputWeek(calendarObject.ChannelId, weekOutput, discord)
-					if err != nil {
+					if err := outputWeek(calendarObject.Webhook, weekOutput); err != nil {
 						log.Error().
 							Err(err).
 							Msg(fmt.Sprintf("Failed while outputting calendar %s:", calendarObject.Name))
@@ -539,5 +481,5 @@ func updateCalendars(calendars []Calendar, discord *discordgo.Session, google Go
 			}
 		})
 	}
-	return nil
+	<-ctx.Done()
 }
